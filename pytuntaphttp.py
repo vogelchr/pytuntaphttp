@@ -9,6 +9,9 @@ import fcntl
 import sys
 import struct
 import weakref
+import logging
+
+log = None
 
 
 class TunInterface:
@@ -43,19 +46,19 @@ class TunInterface:
         flags = fcntl.fcntl(self.fd, fcntl.F_GETFD)
         fcntl.fcntl(self.fd, fcntl.F_SETFD, flags | os.O_NONBLOCK)
 
-    async def packet_recv_task(self) :
+    async def packet_recv_task(self):
         q = asyncio.Queue()
-   
-        def _callback(q=q, fd=self.fd) :
+
+        def _callback(q=q, fd=self.fd):
             data = os.read(fd, 1500)
             q.put_nowait(data)
-        
+
         loop = asyncio.get_event_loop()
         # no simple way to await os.read(), so we circumvent
         # this by the callback which puts stuff in the queue ;-)
         loop.add_reader(self.fd, _callback)
 
-        while True :
+        while True:
             packet = await q.get()
 
             if self.wsref is None:
@@ -64,10 +67,10 @@ class TunInterface:
                 ws = self.wsref()
 
             if ws is None:
-                print(f'XXX [{len(packet):4d}]: websocket dead.')
+                log.error(f'XXX [{len(packet):4d}]: websocket dead.')
                 continue
 
-            print(f'>>> [{len(packet):4d}]: Packet to websocket.')
+            log.debug(f'>>> [{len(packet):4d}]: Packet to websocket.')
             # b64encode(bytes) yields bytes, so decode to ascii ;-)
             json_data = base64.b64encode(packet).decode('ascii')
             await ws.send_json({'packet': json_data})
@@ -79,35 +82,37 @@ class TunInterface:
         async for msg in ws:
             data = msg.json()
             if 'hello' in data:
-                print('Hello received:', data['hello'])
+                log.info('Hello received:', data['hello'])
                 # only enable websocket after a hello was received
                 self.wsref = weakref.ref(ws)
 
             if 'packet' in data:
                 packet = base64.b64decode(data['packet'])
                 os.write(self.fd, packet)
-                print(f'<<< [{len(packet):4d}]: Packet from websocket.')
-
+                log.debug(f'<<< [{len(packet):4d}]: Packet from websocket.')
 
     async def server_get_handler(self, req):
-        print(f'Serving websocket...')
+        log.info(f'Serving websocket...')
+        log.info(repr(req))
         ws = aiohttp.web.WebSocketResponse()
         await ws.prepare(req)
         await ws.send_json({'hello': 'I\'m a server.'})
         await self.handle_messages(ws)
 
     async def client_task(self, url):
-        print(f'Connecting to url {url}...')
+        log.info(f'Connecting to url {url}...')
         sess = aiohttp.ClientSession()
         async with sess.ws_connect(url) as ws:
-            print('Sending hello...')
+            log.info('Sending hello...')
             await ws.send_json({'hello': 'I\'m a client.'})
-            print('Handling messages...')
+            log.info('Handling messages...')
             await self.handle_messages(ws)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('-d', '--debug', action='store_true',
+                        help='Enable debugging output.')
     parser.add_argument('-s', '--server', type=int,
                         metavar='portnum', help='Run server on given port.')
     parser.add_argument('-c', '--client', type=str,
@@ -116,13 +121,24 @@ if __name__ == '__main__':
                         metavar='dev', help='Tunnel interface [default: tun0]')
     args = parser.parse_args()
 
-    if args.server is not None and args.client is not None:
-        print('Error, either run -s/--server or -c/--client!')
+    logging.basicConfig(
+        format='%(asctime)s %(levelname)s: %(message)s',
+        level=logging.DEBUG if args.debug else logging.INFO
+    )
+    log = logging.getLogger(__name__)
+
+    if not ((args.server is not None) ^ (args.client is not None)):
+        log.error('Error, either run -s/--server or -c/--client!')
         sys.exit(1)
 
     loop = asyncio.new_event_loop()
 
-    tun = TunInterface(args.tun)
+    try:
+        tun = TunInterface(args.tun)
+    except Exception as exc:
+        log.exception('Cannot create TunInterface object.')
+        sys.exit(1)
+
     loop.create_task(tun.packet_recv_task())
 
     if args.server is not None:
@@ -131,7 +147,7 @@ if __name__ == '__main__':
         app.router.add_get('/tun', tun.server_get_handler)
         runner = aiohttp.web.AppRunner(app)
         loop.run_until_complete(runner.setup())
-        site = aiohttp.web.TCPSite(runner)    
+        site = aiohttp.web.TCPSite(runner)
         loop.run_until_complete(site.start())
         loop.run_forever()
     else:
