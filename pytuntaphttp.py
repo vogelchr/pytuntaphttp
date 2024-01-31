@@ -147,10 +147,10 @@ if __name__ == '__main__':
     if args.server is not None:
         # Server
         app = aiohttp.web.Application()
-        app.router.add_get('/tun', tun.server_get_handler)
+        app.router.add_get('/vpn/', tun.server_get_handler)
         runner = aiohttp.web.AppRunner(app)
         loop.run_until_complete(runner.setup())
-        site = aiohttp.web.TCPSite(runner)
+        site = aiohttp.web.TCPSite(runner, 'localhost', args.server)
         loop.run_until_complete(site.start())
         loop.run_forever()
     else:
