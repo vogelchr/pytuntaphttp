@@ -11,6 +11,8 @@ import struct
 import weakref
 import logging
 
+from pathlib import Path
+
 log = None
 
 
@@ -100,10 +102,10 @@ class TunInterface:
         await ws.send_json({'hello': 'I\'m a server.'})
         await self.handle_messages(ws)
 
-    async def client_task(self, url):
+    async def client_task(self, url, auth):
         log.info(f'Connecting to url {url}...')
         sess = aiohttp.ClientSession()
-        async with sess.ws_connect(url) as ws:
+        async with sess.ws_connect(url, auth=auth) as ws:
             log.info('Sending hello...')
             await ws.send_json({'hello': 'I\'m a client.'})
             log.info('Handling messages...')
@@ -120,6 +122,8 @@ if __name__ == '__main__':
                         metavar='url', help='Connect to server on given URL.')
     parser.add_argument('-t', '--tun', type=str, default='tun0',
                         metavar='dev', help='Tunnel interface [default: tun0]')
+    parser.add_argument('-a', '--auth', type=Path,
+                        help='Filename with two lines, username and password.')
     args = parser.parse_args()
 
     logging.basicConfig(format='%(asctime)s %(message)s',
@@ -150,4 +154,11 @@ if __name__ == '__main__':
         loop.run_until_complete(site.start())
         loop.run_forever()
     else:
-        loop.run_until_complete(tun.client_task(args.client))
+        auth = None
+        if args.auth:
+            with args.auth.open() as f:
+                login = f.readline().strip()
+                password = f.readline().strip()
+                auth = aiohttp.BasicAuth(login, password)
+
+        loop.run_until_complete(tun.client_task(args.client, auth))
