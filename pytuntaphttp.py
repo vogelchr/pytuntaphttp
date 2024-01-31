@@ -67,10 +67,11 @@ class TunInterface:
                 ws = self.wsref()
 
             if ws is None:
-                log.error(f'XXX [{len(packet):4d}]: websocket dead.')
+                log.error(
+                    f'Websocket dead, cannot send packet of {len(packet)} bytes.')
                 continue
 
-            log.debug(f'>>> [{len(packet):4d}]: Packet to websocket.')
+            log.debug(f'>>> Send packet of {len(packet)} bytes.')
             # b64encode(bytes) yields bytes, so decode to ascii ;-)
             json_data = base64.b64encode(packet).decode('ascii')
             await ws.send_json({'packet': json_data})
@@ -82,14 +83,14 @@ class TunInterface:
         async for msg in ws:
             data = msg.json()
             if 'hello' in data:
-                log.info('Hello received:', data['hello'])
+                log.info(f'Hello received: "{data["hello"]}".')
                 # only enable websocket after a hello was received
                 self.wsref = weakref.ref(ws)
 
             if 'packet' in data:
                 packet = base64.b64decode(data['packet'])
                 os.write(self.fd, packet)
-                log.debug(f'<<< [{len(packet):4d}]: Packet from websocket.')
+                log.debug(f'<<< Received packet of {len(packet)} bytes.')
 
     async def server_get_handler(self, req):
         log.info(f'Serving websocket...')
@@ -121,10 +122,8 @@ if __name__ == '__main__':
                         metavar='dev', help='Tunnel interface [default: tun0]')
     args = parser.parse_args()
 
-    logging.basicConfig(
-        format='%(asctime)s %(levelname)s: %(message)s',
-        level=logging.DEBUG if args.debug else logging.INFO
-    )
+    logging.basicConfig(format='%(asctime)s %(message)s',
+                        level=logging.DEBUG if args.debug else logging.INFO)
     log = logging.getLogger(__name__)
 
     if not ((args.server is not None) ^ (args.client is not None)):
