@@ -27,7 +27,7 @@ Connect the client to the given server (by URL). Of course the tun device on
 the client must have a different address than the one on the server.
 
 ```
-./pytuntaphttp.py -u http://yourserver:port/tun -t tun1234
+./pytuntaphttp.py -u http://yourserver:port/vpn/ -t tun1234
 ```
 
 # Protocol
