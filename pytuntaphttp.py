@@ -60,6 +60,8 @@ class TunInterface:
         # this by the callback which puts stuff in the queue ;-)
         loop.add_reader(self.fd, _callback)
 
+        ws_dead = False
+
         while True:
             packet = await q.get()
 
@@ -69,9 +71,14 @@ class TunInterface:
                 ws = self.wsref()
 
             if ws is None:
-                log.error(
-                    f'Websocket dead, cannot send packet of {len(packet)} bytes.')
+                if not ws_dead:
+                    log.error(f'Websocket is now dead, not sending packets.')
+                ws_dead = True
                 continue
+
+            if ws_dead:
+                log.error(f'Websocket is alive again.')
+                ws_dead = False
 
             log.debug(f'>>> Send packet of {len(packet)} bytes.')
             # b64encode(bytes) yields bytes, so decode to ascii ;-)
