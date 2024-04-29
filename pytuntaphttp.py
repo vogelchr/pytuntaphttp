@@ -107,6 +107,9 @@ class TunInterface:
                 log.debug(f'Timeout, send ping...')
                 await ws.send_json({'ping': 'Timeout.'})
                 continue
+            except StopAsyncIteration:
+                log.info('Websocket has closed.')
+                break
 
             data = msg.json()
             if 'hello' in data:
