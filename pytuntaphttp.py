@@ -130,6 +130,8 @@ class TunInterface:
                     f'Unknown packet {repr(msg)}, will drop the connection.')
                 break
 
+        self.wsref = None
+
     async def server_get_handler(self, req):
         log.info(f'Serving websocket...')
         try:
