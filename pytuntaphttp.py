@@ -83,7 +83,11 @@ class TunInterface:
             log.debug(f'>>> Send packet of {len(packet)} bytes.')
             # b64encode(bytes) yields bytes, so decode to ascii ;-)
             json_data = base64.b64encode(packet).decode('ascii')
-            await ws.send_json({'packet': json_data})
+            try:
+                await ws.send_json({'packet': json_data})
+            except Exception as exc:
+                log.error(
+                    f'Exception {repr(exc)} received trying to send packet.')
 
     ###
     # websocket stuff
@@ -103,11 +107,13 @@ class TunInterface:
 
     async def server_get_handler(self, req):
         log.info(f'Serving websocket...')
-        log.info(repr(req))
-        ws = aiohttp.web.WebSocketResponse()
-        await ws.prepare(req)
-        await ws.send_json({'hello': 'I\'m a server.'})
-        await self.handle_messages(ws)
+        try:
+            ws = aiohttp.web.WebSocketResponse()
+            await ws.prepare(req)
+            await ws.send_json({'hello': 'I\'m a server.'})
+            await self.handle_messages(ws)
+        except Exception as exc:
+            log.error(f'Exception {repr(exc)} received handling websocket.')
 
     async def client_task(self, url, auth):
         log.info(f'Connecting to url {url}...')
