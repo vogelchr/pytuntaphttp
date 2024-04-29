@@ -15,6 +15,8 @@ from pathlib import Path
 
 log = None
 
+timeout = None
+
 
 class TunInterface:
     def __init__(self, devname):
@@ -93,17 +95,37 @@ class TunInterface:
     # websocket stuff
     ###
     async def handle_messages(self, ws):
-        async for msg in ws:
+        global timeout
+
+        # not using async for, because we want to timeout
+        # for each individual message
+        ws_iter = aiter(ws)
+        while True:
+            try:
+                msg = await asyncio.wait_for(ws_iter.__anext__(), timeout)
+            except TimeoutError:
+                log.debug(f'Timeout, send ping...')
+                await ws.send_json({'ping': 'Timeout.'})
+                continue
+
             data = msg.json()
             if 'hello' in data:
                 log.info(f'Hello received: "{data["hello"]}".')
                 # only enable websocket after a hello was received
                 self.wsref = weakref.ref(ws)
-
-            if 'packet' in data:
+            elif 'ping' in data and type(data['ping']) is str:
+                log.debug(f'Ping received, send pong...')
+                await ws.send_json({'pong': data['ping']})
+            elif 'pong' in data and type(data['pong']) is str:
+                log.debug(f'Pong received, ignoring...')
+            elif 'packet' in data:
                 packet = base64.b64decode(data['packet'])
                 os.write(self.fd, packet)
                 log.debug(f'<<< Received packet of {len(packet)} bytes.')
+            else:
+                log.error(
+                    f'Unknown packet {repr(msg)}, will drop the connection.')
+                break
 
     async def server_get_handler(self, req):
         log.info(f'Serving websocket...')
@@ -137,6 +159,8 @@ if __name__ == '__main__':
                         metavar='dev', help='Tunnel interface [default: tun0]')
     parser.add_argument('-a', '--auth', type=Path,
                         help='Filename with two lines, username and password.')
+    parser.add_argument('-T', '--timeout', type=float, default=10, metavar='sec',
+                        help='Timeout for keepalives [def:%(default)d s]')
     args = parser.parse_args()
 
     logging.basicConfig(format='%(asctime)s %(message)s',
@@ -146,6 +170,8 @@ if __name__ == '__main__':
     if not ((args.server is not None) ^ (args.client is not None)):
         log.error('Error, either run -s/--server or -c/--client!')
         sys.exit(1)
+
+    timeout = args.timeout
 
     loop = asyncio.new_event_loop()
 
