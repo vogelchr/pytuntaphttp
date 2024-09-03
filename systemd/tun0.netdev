@@ -1,0 +1,8 @@
+[NetDev]
+Name=tun0
+Kind=tun
+
+[Tun]
+User=tunnel
+Group=tunnel
+

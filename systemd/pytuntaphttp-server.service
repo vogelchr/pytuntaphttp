@@ -1,0 +1,15 @@
+[Unit]
+Description=VPN via Websocket
+After=nginx.service
+
+[Service]
+Environment=
+Type=simple
+PrivateTmp=true
+ExecStart=/usr/local/sbin/pytuntaphttp.py -s 3001
+Restart=no
+User=tunnel
+SupplementaryGroups=tunnel
+
+[Install]
+WantedBy=multi-user.target

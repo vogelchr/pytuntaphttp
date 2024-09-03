@@ -1,0 +1,11 @@
+[Match]
+Name=tun0
+
+[Network]
+IPv6AcceptRA=false
+IPv6ProxyNDP=no
+LinkLocalAddressing=no
+DHCP=no
+
+[Address]
+Address=172.17.9.1/24
