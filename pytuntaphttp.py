@@ -50,7 +50,7 @@ class TunInterface:
         flags = fcntl.fcntl(self.fd, fcntl.F_GETFD)
         fcntl.fcntl(self.fd, fcntl.F_SETFD, flags | os.O_NONBLOCK)
 
-    async def packet_recv_task(self):
+    async def packet_recv_task(self, send_binary:bool):
         q = asyncio.Queue()
 
         def _callback(q=q, fd=self.fd):
@@ -82,14 +82,17 @@ class TunInterface:
                 log.error(f'Websocket is alive again.')
                 ws_dead = False
 
-            log.debug(f'>>> Send packet of {len(packet)} bytes.')
-            # b64encode(bytes) yields bytes, so decode to ascii ;-)
-            json_data = base64.b64encode(packet).decode('ascii')
             try:
-                await ws.send_json({'packet': json_data})
+                if send_binary:
+                    log.debug(f'>>> Send (binary) packet of {len(packet)} bytes.')
+                    await ws.send_bytes(packet)
+                else:
+                    log.debug(f'>>> Send (base64) packet of {len(packet)} bytes.')
+                    # b64encode(bytes) yields bytes, so decode to ascii ;-)
+                    json_data = base64.b64encode(packet).decode('ascii')
+                    await ws.send_json({'packet': json_data})
             except Exception as exc:
-                log.error(
-                    f'Exception {repr(exc)} received trying to send packet.')
+                log.error(f'Exception {repr(exc)} received trying to send packet.')
 
     ###
     # websocket stuff
@@ -111,6 +114,12 @@ class TunInterface:
                 log.info('Websocket has closed.')
                 break
 
+            if msg.type == aiohttp.WSMsgType.BINARY:
+                packet = msg.data
+                os.write(self.fd, packet)
+                log.debug(f'<<< Received (binary) packet of {len(packet)} bytes.')
+                continue
+
             data = msg.json()
             if 'hello' in data:
                 log.info(f'Hello received: "{data["hello"]}".')
@@ -124,10 +133,9 @@ class TunInterface:
             elif 'packet' in data:
                 packet = base64.b64decode(data['packet'])
                 os.write(self.fd, packet)
-                log.debug(f'<<< Received packet of {len(packet)} bytes.')
+                log.debug(f'<<< Received (base64) packet of {len(packet)} bytes.')
             else:
-                log.error(
-                    f'Unknown packet {repr(msg)}, will drop the connection.')
+                log.error(f'Unknown packet {repr(msg)}, will drop the connection.')
                 break
 
         self.wsref = None
@@ -166,6 +174,8 @@ if __name__ == '__main__':
                         help='Filename with two lines, username and password.')
     parser.add_argument('-T', '--timeout', type=float, default=10, metavar='sec',
                         help='Timeout for keepalives [def:%(default)d s]')
+    parser.add_argument('-b', '--binary', action='store_true',
+                        help='Send packes as binary websocket message, default is base64-in-json.')
     args = parser.parse_args()
 
     logging.basicConfig(format='%(asctime)s %(message)s',
@@ -186,7 +196,7 @@ if __name__ == '__main__':
         log.exception('Cannot create TunInterface object.')
         sys.exit(1)
 
-    loop.create_task(tun.packet_recv_task())
+    loop.create_task(tun.packet_recv_task(send_binary=args.binary))
 
     if args.server is not None:
         # Server
