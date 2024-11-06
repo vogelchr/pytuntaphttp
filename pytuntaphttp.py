@@ -160,8 +160,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--debug', action='store_true',
                         help='Enable debugging output.')
-    parser.add_argument('-s', '--server', type=int,
+    parser.add_argument('-s', '--server-port', type=int,
                         metavar='portnum', help='Run server on given port.')
+    parser.add_argument('-S', '--server-address', type=str,
+                        metavar='address', help='Run server on given address. [def:%(default)s]',
+                        default='localhost')
     parser.add_argument('-c', '--client', type=str,
                         metavar='url', help='Connect to server on given URL.')
     parser.add_argument('-t', '--tun', type=str, default='tun0',
@@ -178,7 +181,7 @@ if __name__ == '__main__':
                         level=logging.DEBUG if args.debug else logging.INFO)
     log = logging.getLogger(__name__)
 
-    if not ((args.server is not None) ^ (args.client is not None)):
+    if not ((args.server_port is not None) ^ (args.client is not None)):
         log.error('Error, either run -s/--server or -c/--client!')
         sys.exit(1)
 
@@ -192,13 +195,13 @@ if __name__ == '__main__':
 
     loop.create_task(tun.packet_recv_task(send_binary=args.binary))
 
-    if args.server is not None:
+    if args.server_port is not None:
         # Server
         app = aiohttp.web.Application()
         app.router.add_get('/vpn/', tun.server_get_handler)
         runner = aiohttp.web.AppRunner(app)
         loop.run_until_complete(runner.setup())
-        site = aiohttp.web.TCPSite(runner, 'localhost', args.server)
+        site = aiohttp.web.TCPSite(runner, args.server_address, args.server_port)
         loop.run_until_complete(site.start())
         loop.run_forever()
     else:
