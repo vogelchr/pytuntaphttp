@@ -15,15 +15,13 @@ from pathlib import Path
 
 log = None
 
-timeout = None
-
-
 class TunInterface:
-    def __init__(self, devname):
+    def __init__(self, devname, timeout):
         if type(devname) == str:
             self.devname = devname.encode('ascii')
         self.fd = None  # file descriptor number
         self.wsref = None  # weak reference to last active websocket
+        self.timeout = timeout
         self._open()
 
     ###
@@ -98,14 +96,12 @@ class TunInterface:
     # websocket stuff
     ###
     async def handle_messages(self, ws):
-        global timeout
-
         # not using async for, because we want to timeout
         # for each individual message
         ws_iter = aiter(ws)
         while True:
             try:
-                msg = await asyncio.wait_for(ws_iter.__anext__(), timeout)
+                msg = await asyncio.wait_for(ws_iter.__anext__(), self.timeout)
             except TimeoutError:
                 log.debug(f'Timeout, send ping...')
                 await ws.send_json({'ping': 'Timeout.'})
@@ -186,12 +182,10 @@ if __name__ == '__main__':
         log.error('Error, either run -s/--server or -c/--client!')
         sys.exit(1)
 
-    timeout = args.timeout
-
     loop = asyncio.new_event_loop()
 
     try:
-        tun = TunInterface(args.tun)
+        tun = TunInterface(args.tun, args.timeout)
     except Exception as exc:
         log.exception('Cannot create TunInterface object.')
         sys.exit(1)
