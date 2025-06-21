@@ -10,13 +10,20 @@ import sys
 import struct
 import weakref
 import logging
+from typing import Union, Optional
 
 from pathlib import Path
 
 log = None
 
+
 class TunInterface:
-    def __init__(self, devname, timeout):
+
+    fd: Optional[int]  # tunnel filedescriptor
+    wsref: Optional[weakref.ref]  # weak reference to websocket
+    timeout: float  # timeout for keepalives
+
+    def __init__(self, devname: Union[str, bytes], timeout: float):
         if type(devname) == str:
             self.devname = devname.encode('ascii')
         self.fd = None  # file descriptor number
@@ -33,6 +40,7 @@ class TunInterface:
         TUNSETIFF = 1074025674  # _IOW('T', 202, int)
         IFNAMSIZ = 16  # length of name, then comes short ifr_flags
         IFF_TUN = 1  # mode of tunnel
+        IFF_TAP = 2  # mode of tunnel
         IFF_NO_PI = 4096  # no packet info
 
         # open mux device
@@ -40,7 +48,8 @@ class TunInterface:
 
         # ioctl to set interface name, we assume we run as a non-root
         # user and the device has been prepared for us already
-        flags = IFF_TUN | IFF_NO_PI
+        flags = IFF_TUN
+
         ifr = struct.pack('16sH22s', self.devname, flags, b'x00'*22)
         fcntl.ioctl(self.fd, TUNSETIFF, ifr)
 
@@ -48,7 +57,7 @@ class TunInterface:
         flags = fcntl.fcntl(self.fd, fcntl.F_GETFD)
         fcntl.fcntl(self.fd, fcntl.F_SETFD, flags | os.O_NONBLOCK)
 
-    async def packet_recv_task(self, send_binary:bool):
+    async def packet_recv_task(self, send_binary: bool):
         q = asyncio.Queue()
 
         def _callback(q=q, fd=self.fd):
