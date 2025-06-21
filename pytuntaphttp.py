@@ -22,13 +22,16 @@ class TunInterface:
     fd: Optional[int]  # tunnel filedescriptor
     wsref: Optional[weakref.ref]  # weak reference to websocket
     timeout: float  # timeout for keepalives
+    ethernet: bool  # tap instead of tun if True
 
-    def __init__(self, devname: Union[str, bytes], timeout: float):
+    def __init__(self, devname: Union[str, bytes], timeout: float, ethernet: bool):
         if type(devname) == str:
             self.devname = devname.encode('ascii')
         self.fd = None  # file descriptor number
         self.wsref = None  # weak reference to last active websocket
         self.timeout = timeout
+        self.ethernet = ethernet
+
         self._open()
 
     ###
@@ -48,7 +51,7 @@ class TunInterface:
 
         # ioctl to set interface name, we assume we run as a non-root
         # user and the device has been prepared for us already
-        flags = IFF_TUN
+        flags = IFF_TAP if self.ethernet else IFF_TUN
 
         ifr = struct.pack('16sH22s', self.devname, flags, b'x00'*22)
         fcntl.ioctl(self.fd, TUNSETIFF, ifr)
@@ -184,6 +187,8 @@ if __name__ == '__main__':
                         help='Timeout for keepalives [def:%(default)d s]')
     parser.add_argument('-b', '--binary', action='store_true',
                         help='Send packes as binary websocket message, default is base64-in-json.')
+    parser.add_argument('-e', '--ethernet', action='store_true',
+                        help='Emulate ethernet ("tap") instead of ip tunnel ("tun").')
     args = parser.parse_args()
 
     logging.basicConfig(format='%(asctime)s %(message)s',
@@ -197,7 +202,7 @@ if __name__ == '__main__':
     loop = asyncio.new_event_loop()
 
     try:
-        tun = TunInterface(args.tun, args.timeout)
+        tun = TunInterface(args.tun, args.timeout, args.ethernet)
     except Exception as exc:
         log.exception('Cannot create TunInterface object.')
         sys.exit(1)
