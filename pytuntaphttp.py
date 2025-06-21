@@ -157,6 +157,8 @@ class TunInterface:
             await self.handle_messages(ws)
         except Exception as exc:
             log.error(f'Exception {repr(exc)} received handling websocket.')
+        return aiohttp.web.Response(body="bye", status=200)
+
 
     async def client_task(self, url, auth):
         log.info(f'Connecting to url {url}...')
