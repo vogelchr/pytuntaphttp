@@ -64,7 +64,7 @@ class TunInterface:
         q = asyncio.Queue()
 
         def _callback(q=q, fd=self.fd):
-            data = os.read(fd, 1500)
+            data = os.read(fd, 2048) # must be more than mtu + overhead!
             q.put_nowait(data)
 
         loop = asyncio.get_event_loop()
